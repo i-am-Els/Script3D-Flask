@@ -120,37 +120,32 @@ function appendMessage(message, sender) {
 // Modify sendChat to handle file upload
 async function sendChat() {
     const chatInput = document.getElementById("chatInput");
-    const message = chatInput.value.trim();
+    const textContent = chatInput.value.trim();
     const file = fileInput.files[0];
 
-    if (!message && !file) {
-        alert("Please enter a message or upload a file.");
+    if (!textContent && !file) {
+        flash("Please either upload a file or paste your screenplay text.", "error");
         return;
     }
 
     // Create FormData
     const formData = new FormData();
-    if (message) formData.append("user_input", message);
-    if (file) formData.append("file", file);
     
-    // Add analysis type if file is present
-    if (file) formData.append("analysis_type", "full");
+    if (file) {
+        formData.append("file", file);
+        appendMessage(`[Analyzing uploaded file: ${file.name}]`, "user");
+    } else if (textContent) {
+        formData.append("text_content", textContent);
+        appendMessage("[Analyzing pasted text]", "user");
+    }
+    
+    formData.append("analysis_type", "full");
 
     // Clear inputs
     chatInput.value = '';
     
-    // Add visual feedback
-    if (file) {
-        appendMessage(`[Uploaded file: ${file.name}]`, "user");
-    }
-    if (message) {
-        appendMessage(message, "user");
-    }
-
     try {
-        // Use analyze_screenplay endpoint if file is present, otherwise use chat
-        const endpoint = file ? '/analyze_screenplay' : '/chat';
-        const response = await fetch(endpoint, {
+        const response = await fetch('/analyze_screenplay', {
             method: 'POST',
             body: formData
         });
@@ -169,8 +164,6 @@ async function sendChat() {
         let responseMessage = '';
         if (data.analysis) {
             responseMessage = JSON.stringify(data.analysis, null, 2);
-        } else if (data.response) {
-            responseMessage = data.response;
         }
 
         // Append bot response

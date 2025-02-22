@@ -187,20 +187,30 @@ def query_llm(prompt: str, context: str) -> dict:
 def analyze_screenplay():
     try:
         uploaded_file = request.files.get('file')
+        text_content = request.form.get('text_content')
         analysis_type = request.form.get('analysis_type', 'full')
         
-        if not uploaded_file or uploaded_file.filename == '':
-            flash("No file uploaded", "error")
-            return jsonify({"error": "No file uploaded"})
+        # Check if we have either a file or text content
+        if not uploaded_file and not text_content:
+            flash("Please provide either a file or screenplay text", "error")
+            return jsonify({"error": "No content provided"})
 
-        if not allowed_file(uploaded_file.filename):
-            flash("Invalid file type. Allowed: PDF, TXT, Fountain", "error")
-            return jsonify({"error": "Invalid file type. Allowed: PDF, TXT, Fountain"})
+        # Get screenplay text either from file or direct input
+        if uploaded_file and uploaded_file.filename != '':
+            if not allowed_file(uploaded_file.filename):
+                flash("Invalid file type. Allowed: PDF, TXT, Fountain", "error")
+                return jsonify({"error": "Invalid file type"})
+            
+            screenplay_text = extract_text_from_file(uploaded_file)
+            if not screenplay_text:
+                flash("Could not extract text from file", "error")
+                return jsonify({"error": "Could not extract text from file"})
+        else:
+            screenplay_text = text_content
 
-        screenplay_text = extract_text_from_file(uploaded_file)
-        if not screenplay_text:
-            flash("Could not extract text from file", "error")
-            return jsonify({"error": "Could not extract text from file"})
+        if not screenplay_text or not screenplay_text.strip():
+            flash("No screenplay text found to analyze", "error")
+            return jsonify({"error": "No text to analyze"})
 
         # Define prompt based on analysis type
         prompts = {
@@ -211,15 +221,15 @@ def analyze_screenplay():
         }
 
         analysis_result = query_llm(prompts.get(analysis_type, prompts['full']), screenplay_text)
-
+        
         if "error" in analysis_result:
-            flash(analysis_result["error"], "error")
             return jsonify(analysis_result)
             
         flash("Analysis completed successfully!", "success")
         return jsonify({
             "analysis": analysis_result,
-            "file_name": uploaded_file.filename,
+            "source_type": "file" if uploaded_file else "text",
+            "file_name": uploaded_file.filename if uploaded_file else None,
             "analysis_type": analysis_type
         })
     except Exception as e:
