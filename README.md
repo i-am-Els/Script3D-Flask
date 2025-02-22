@@ -28,10 +28,10 @@ To do this in one command use the command below.
 pip install -r requirements.txt
 ```
 #### Create a `.env` file for your environment variables in root.
-Create variables for your `GROQ_API_KEY` and `FLASH_SECRET_KEY`.
+Create variables for your `GROQ_API_KEY` and `FLASK_SECRET_KEY`.
 ```shell
   GROQ_API_KEY=your-groq-api-key
-  FLASK_SECRET_KEY=your-flash-secret-key
+  FLASK_SECRET_KEY=your-flask-secret-key
 ```
 To get your `FLASK_SECRET_KEY`, run the command below in your terminal.
 ```shell
