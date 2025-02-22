@@ -1,0 +1,337 @@
+/* Centralized theme colours */
+:root {
+    --primary-color: #0e8e0e;
+    --secondary-color: #fff;
+    /* This will be computed automatically based on --primary-color */
+    --user-bubble-color: #d7e2e7;
+}
+
+/* Overall layout using grid */
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #ECE5DD;
+    overflow: hidden;
+}
+
+.chat-container {
+    display: grid;
+    grid-template-rows: 60px 1fr 100px;
+    height: 100vh;
+    position: relative;
+}
+
+/* Header (banner) */
+.chat-header {
+    background-color: var(--primary-color);
+    color: var(--secondary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+/* Chat messages area: scrollable */
+.chat-messages {
+    padding: 20px;
+    overflow-y: auto;
+    background-size: cover;
+}
+/* Upload button styling */
+.upload-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    color: var(--secondary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-right: 10px;
+    transition: background-color 0.3s;
+}
+
+.upload-btn:hover {
+    background-color: #0c7c0c;
+}
+
+/* Selected file display */
+.selected-file {
+    padding: 1px 15px;
+    background-color: #f0f0f0;
+    border-radius: 20px;
+    margin: 2px 20px 0 30px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    bottom: auto;
+}
+
+#fileName {
+    font-size: 14px;
+    color: #666;
+    max-width: 80%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#clearFileBtn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #999;
+    font-size: 18px;
+    padding: 0 5px;
+}
+
+#clearFileBtn:hover {
+    color: #666;
+}
+
+/* Container for each message to force new line and alignment */
+.message-container {
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.message-container.user {
+    text-align: right;
+}
+
+.message-container.bot {
+    text-align: left;
+}
+
+/* Chat bubble styling */
+.message-bubble {
+    position: relative;
+    display: inline-block;
+    max-width: 70%;
+    padding: 10px 15px;
+    border-radius: 20px;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+/* User bubble uses computed variant and tail on the right */
+.message-bubble.user {
+    background-color: var(--user-bubble-color);
+    position: relative;
+    border-top-right-radius: 0;
+}
+
+.message-bubble.user:before {
+    content: ' ';
+    position: absolute;
+    width: 0;
+    height: 0;
+    left: auto;
+    right: -40px;
+    top: 0;
+    bottom: auto;
+    border-color: var(--user-bubble-color);
+}
+
+.message-bubble.user::after {
+    content: ' ';
+    position: absolute;
+    width: 0;
+    height: 0;
+    left: auto;
+    right: -20px;
+    top: 0;
+    bottom: auto;
+    border: 12px solid;
+    border-color: var(--user-bubble-color) transparent transparent var(--user-bubble-color);
+}
+
+/* Bot bubble with a tail on the left */
+.message-bubble.bot {
+    background-color: var(--secondary-color);
+    position: relative;
+    border-top-left-radius: 0;
+}
+
+.message-bubble.bot::before {
+    content: ' ';
+    position: absolute;
+    width: 0;
+    height: 0;
+    left: -40px;
+    right: auto;
+    top: 0;
+    bottom: auto;
+    border-color: var(--secondary-color);
+}
+
+.message-bubble.bot::after {
+    content: ' ';
+    position: absolute;
+    width: 0;
+    height: 0;
+    left: -20px;
+    right: auto;
+    top: 0;
+    bottom: auto;
+    border: 12px solid;
+    border-color: var(--secondary-color) var(--secondary-color) transparent transparent;
+}
+
+/* Chat footer */
+.chat-footer {
+    background-color: #f7f7f7;
+    border-top: 1px solid #ccc;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 5px 10px;
+}
+
+.chat-input-container {
+    display: flex;
+    align-items: center;
+}
+
+/* Use a textarea for multi‑line wrapping */
+.chat-input-container textarea {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 20px;
+    background-color: #f0f0f0;
+    outline: none;
+    resize: none;
+    height: 40px;
+    overflow-y: auto;
+    font-family: inherit;
+    font-size: 16px;
+}
+
+/* Perfectly round buttons with fixed dimensions */
+.chat-input-container button {
+    margin-left: 10px;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    color: var(--secondary-color);
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+/* Download JSON button styled as an icon, hidden by default, positioned top-right */
+#downloadJson {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    color: var(--secondary-color);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    z-index: 1100;
+}
+
+/* JSON side panel */
+#jsonViewPanel {
+    position: fixed;
+    top: 0;
+    right: -50%; /* Hidden offscreen when closed */
+    width: 45%;
+    height: 100vh;
+    background-color: var(--secondary-color);
+    border-left: 1px solid #ccc;
+    overflow-y: auto;
+    transition: right 0.3s ease;
+    padding: 10px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    z-index: 1000;
+}
+
+#jsonViewPanel.open {
+    right: 0;
+}
+
+/* Bookmark-style toggle tab for JSON panel */
+#toggleTab {
+    position: fixed;
+    top: 40%;
+    right: 0;
+    transform: translateY(-40%) rotate(0deg);
+    transform-origin: right center;
+    width: 80px;
+    height: 30px;
+    background-color: var(--primary-color);
+    color: var(--secondary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1100;
+    border-radius: 5px 0 0 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+#creditSpan{
+    color: var(--primary-color);
+    align-self: center;
+    align-items: center;
+    justify-content: center;
+    font-size: small;
+}
+
+/* Flash messages */
+.flash-messages {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    width: 80%;
+    max-width: 600px;
+}
+
+.alert {
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    animation: fadeOut 5s forwards;
+    opacity: 1;
+}
+
+.alert-error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+    color: #856404;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+@keyframes fadeOut {
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+}
