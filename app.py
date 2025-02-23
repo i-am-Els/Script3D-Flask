@@ -1,12 +1,16 @@
-from flask import Flask, render_template, request, jsonify, send_file, flash
+from flask import Flask, render_template, request, jsonify, send_file, flash, session, make_response
 import json
 import io
 import os
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 from groq import Groq
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Literal, Any
 from dotenv import load_dotenv
+from enum import Enum
+from datetime import datetime
+from functools import wraps
+from dataclasses import dataclass
 
 load_dotenv()  # Add this near the top of your script
 
@@ -17,34 +21,180 @@ app.secret_key = os.environ['FLASK_SECRET_KEY']  # Simplified since we know the 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'fountain'}
 
-# Pydantic models for structured screenplay analysis
-class SceneElement(BaseModel):
-    type: str = Field(description="Type of scene element (scene_heading, character, dialogue, transition, etc.)")
-    content: str = Field(description="The actual content of the element")
-    scene_number: Optional[int] = Field(description="Scene number where this element appears")
+# Enums for fixed categories
+class EntityType(str, Enum):
+    CHARACTER = "character"
+    PROP = "prop"
+    ENVIRONMENT = "environment"
 
-class CharacterInteraction(BaseModel):
-    subject: str = Field(description="Character performing the action")
-    action: str = Field(description="What the character did")
-    object: Optional[str] = Field(description="Character or thing being acted upon")
-    scene_context: str = Field(description="Brief context of the scene where this interaction occurs")
+class InteractionType(str, Enum):
+    PHYSICAL = "physical"
+    DIALOGUE = "dialogue"
+    OBSERVATION = "observation"
+    MOVEMENT = "movement"
 
-class UnityComponent(BaseModel):
-    name: str = Field(description="Name of the Unity component")
-    purpose: str = Field(description="Why this component is needed")
-    properties: Dict[str, str] = Field(description="Key properties that need to be configured")
+# Base Models
+class Entity(BaseModel):
+    id: str
+    name: str
+    type: EntityType
+    description: str
+    is_interactive: bool = True
 
-class CharacterGameSetup(BaseModel):
-    character: str = Field(description="Character name")
-    interactions: List[str] = Field(description="List of all interactions this character performs")
-    required_components: List[UnityComponent] = Field(description="Required Unity components for this character")
+class Interaction(BaseModel):
+    id: str
+    scene_id: str
+    subject_id: str
+    target_id: str
+    action: str
+    type: InteractionType
+    # description: str
+
+class Scene(BaseModel):
+    id: str
+    name: str
+    description: str
+    entities_present: List[str]
+
+# Analysis Result Models
+class ComponentRequirement(BaseModel):
+    component_id: str
+    reason: str
+    interactions: List[str]
+
+class EntityComponents(BaseModel):
+    entity_id: str
+    required_components: List[ComponentRequirement]
+
+class InteractionRole(BaseModel):
+    interactions: List[str]
+    required_components: List[str]
+
+class EntityInteractionMap(BaseModel):
+    entity_id: str
+    as_subject: InteractionRole
+    as_target: InteractionRole
+
+class TimelineEvent(BaseModel):
+    interaction_id: str
+    start_time: float
+    duration: float
+    components_involved: List[str]
+
+class Timeline(BaseModel):
+    scene_id: str
+    events: List[TimelineEvent]
+
+# First Phase Result
+class EntityExtractionResult(BaseModel):
+    entities: Dict[str, Entity]
+
+# Second Phase Result
+class InteractionAnalysisResult(BaseModel):
+    scenes: Dict[str, Scene]
+    interactions: Dict[str, Interaction]
+
+# Final Analysis Results
+class EntityComponentResult(BaseModel):
+    entity_components: Dict[str, EntityComponents]
+
+class InteractionMapResult(BaseModel):
+    interaction_map: Dict[str, EntityInteractionMap]
+
+class TimelineResult(BaseModel):
+    timeline: Timeline
 
 class ScreenplayAnalysis(BaseModel):
-    scene_elements: List[SceneElement] = Field(description="All extracted scene elements")
-    character_interactions: List[CharacterInteraction] = Field(description="All character interactions")
-    interactions_by_character: Dict[str, List[CharacterInteraction]] = Field(description="Interactions grouped by character")
-    game_setup: List[CharacterGameSetup] = Field(description="Game engine setup requirements for each character")
+    characters: Dict[str, dict]
 
+# Add this near the top of the file, with other constants
+UNITY_COMPONENTS = {
+    "Transform": {
+        "id": "COMP001",
+        "description": "Basic position, rotation, and scale component"
+    },
+    "Animator": {
+        "id": "COMP002",
+        "description": "Handles character animations and state machines"
+    },
+    "AudioSource": {
+        "id": "COMP003",
+        "description": "Handles sound emission and voice"
+    },
+    "Rigidbody": {
+        "id": "COMP004",
+        "description": "Handles physical interactions and forces"
+    },
+    "Collider": {
+        "id": "COMP005",
+        "description": "Defines physical boundaries and collision detection"
+    },
+    "NavMeshAgent": {
+        "id": "COMP006",
+        "description": "Handles pathfinding and movement"
+    },
+    "VFXGraph": {
+        "id": "COMP007",
+        "description": "Handles visual effects and particles"
+    },
+    "DialogSystem": {
+        "id": "COMP008",
+        "description": "Manages character dialogue"
+    },
+    "IKSystem": {
+        "id": "COMP009",
+        "description": "Handles inverse kinematics for precise movements"
+    },
+    "EventTrigger": {
+        "id": "COMP010",
+        "description": "Manages interaction triggers"
+    },
+    "CharacterController": {
+        "id": "COMP011",
+        "description": "Handles character movement and physics"
+    },
+    "AIController": {
+        "id": "COMP012",
+        "description": "Manages NPC behavior"
+    },
+    "Timeline": {
+        "id": "COMP013",
+        "description": "Manages animation sequences"
+    }
+}
+
+# Custom Exceptions
+class AnalysisError(Exception):
+    """Base exception for analysis errors"""
+    pass
+
+class EntityExtractionError(AnalysisError):
+    """Raised when entity extraction fails"""
+    pass
+
+class InteractionAnalysisError(AnalysisError):
+    """Raised when interaction analysis fails"""
+    pass
+
+# Session requirement decorator
+def requires_session_data(*keys: str):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not len(keys):
+                return error_response(ValueError("No session data received. Please restart analysis."))
+            missing = [key for key in keys if key not in session]
+            if missing:
+                return error_response(ValueError(f"Missing required data: {', '.join(missing)}. Please restart analysis."))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+# Standardized error response
+def error_response(e: Exception, status_code: int = 400) -> tuple:
+    error_msg = str(e)
+    flash(error_msg, "error")
+    return jsonify({"error": error_msg}), status_code
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -63,216 +213,358 @@ def extract_text_from_file(file):
         print(f"Error extracting text: {str(e)}")
         return None
 
-def query_llm(prompt: str, context: str) -> dict:
+def query_llm(prompt: str, context: str, response_model: Optional[BaseModel] = None) -> dict:
     """
-    Query Groq LLM with structured screenplay analysis
+    Generic LLM query service that handles all LLM interactions
+    
+    Args:
+        prompt: System message/instructions for the LLM
+        context: The content to analyze
+        response_model: Optional Pydantic model to validate response
+    
+    Returns:
+        Validated response dictionary
     """
     try:
-        # Calculate approximate tokens (rough estimate: 4 chars = 1 token)
+        # Token management
         estimated_tokens = len(context) // 4
+        context_summary = context[:8000] if estimated_tokens > 2000 else context
         
-        if estimated_tokens > 3000:  # Reduced from 4000 to stay well under the 5000 TPM limit
-            context_summary = context[:12000]  # 3000 tokens * 4 chars
-            system_message = """
-            You are an AI assistant specialized in analyzing screenplays. Your response must be a JSON object with EXACTLY these fields:
-            {
-                "scene_elements": [
-                    {
-                        "type": "scene_heading|character|dialogue|transition",
-                        "content": "actual text content",
-                        "scene_number": optional number
-                    }
-                ],
-                "character_interactions": [
-                    {
-                        "subject": "character performing action",
-                        "action": "what they did",
-                        "object": "who/what they interacted with",
-                        "scene_context": "brief scene description"
-                    }
-                ],
-                "interactions_by_character": {
-                    "CHARACTER_NAME": [
-                        {same structure as character_interactions}
-                    ]
-                },
-                "game_setup": [
-                    {
-                        "character": "character name",
-                        "interactions": ["list", "of", "actions"],
-                        "required_components": [
-                            {
-                                "name": "Unity component name",
-                                "purpose": "why it's needed",
-                                "properties": {
-                                    "property_name": "property description"
-                                }
-                            }
-                        ]
-                    }
-                ]
-            }
-            
-            Analyze this portion of the screenplay and provide output in EXACTLY this format.
-            """
-        else:
-            context_summary = context
-            system_message = """
-            You are an AI assistant specialized in analyzing screenplays. Your response must be a JSON object with EXACTLY these fields:
-            {
-                "scene_elements": [
-                    {
-                        "type": "scene_heading|character|dialogue|transition",
-                        "content": "actual text content",
-                        "scene_number": optional number
-                    }
-                ],
-                "character_interactions": [
-                    {
-                        "subject": "character performing action",
-                        "action": "what they did",
-                        "object": "who/what they interacted with",
-                        "scene_context": "brief scene description"
-                    }
-                ],
-                "interactions_by_character": {
-                    "CHARACTER_NAME": [
-                        {same structure as character_interactions}
-                    ]
-                },
-                "game_setup": [
-                    {
-                        "character": "character name",
-                        "interactions": ["list", "of", "actions"],
-                        "required_components": [
-                            {
-                                "name": "Unity component name",
-                                "purpose": "why it's needed",
-                                "properties": {
-                                    "property_name": "property description"
-                                }
-                            }
-                        ]
-                    }
-                ]
-            }
-            
-            Analyze the complete screenplay and provide output in EXACTLY this format.
-            """
+        if estimated_tokens > 2000:
+            flash("Content too long. Only analyzing first portion.", "warning")
 
+        # LLM query
         client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        
         completion = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": f"Instructions: {prompt}\n\nScreenplay content: {context_summary}"}
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": context}
             ],
             model="mixtral-8x7b-32768",
-            temperature=0.2,
+            temperature=0.1,
             response_format={"type": "json_object"}
         )
         
-        response_data = ScreenplayAnalysis.parse_raw(completion.choices[0].message.content)
-        return response_data.dict()
-    
+        # Parse response
+        response_data = json.loads(completion.choices[0].message.content)
+        
+        # Validate with model if provided
+        if response_model:
+            validated_data = response_model.parse_obj(response_data)
+            return validated_data.dict()
+        
+        return response_data
+
     except Exception as e:
         error_message = str(e)
-        if "rate_limit_exceeded" in error_message:
-            flash("The screenplay is too long to process at once. Only analyzing the first portion.", "warning")
-        else:
-            flash(f"Error in screenplay analysis: {error_message}", "error")
+        flash(f"LLM Analysis Error: {error_message}", "error")
         return {"error": error_message}
 
-@app.route('/analyze_screenplay', methods=['POST'])
-def analyze_screenplay():
+def extract_entities(screenplay_text: str) -> EntityExtractionResult:
+    """
+    Extract entities from screenplay text using the LLM.
+    Returns a validated EntityExtractionResult.
+    """
     try:
-        uploaded_file = request.files.get('file')
-        text_content = request.form.get('text_content')
-        analysis_type = request.form.get('analysis_type', 'full')
+        system_message = """
+        Analyze this screenplay and identify ALL entities (characters, props, and environment elements) that appear.
         
-        # Check if we have either a file or text content
-        if not uploaded_file and not text_content:
-            flash("Please provide either a file or screenplay text", "error")
-            return jsonify({"error": "No content provided"})
+        For each entity:
+        1. Generate a unique ID (E001, E002, etc.)
+        2. Determine its type (character, prop, or environment)
+        3. Provide a brief description
+        4. Determine if it's interactive
+        
+        Return ONLY a JSON object with this structure:
+        {
+            "entities": {
+                "E001": {
+                    "id": "E001",
+                    "name": "Character/Prop Name",
+                    "type": "character|prop|environment",
+                    "description": "Brief description of the entity",
+                    "is_interactive": true|false
+                }
+            }
+        }
+        
+        Consider:
+        - Characters: All speaking roles and named background characters
+        - Props: Objects that are manipulated, referenced, or important to scenes
+        - Environment: Key scene elements like "Cave Wall", "Street", "Building"
+        - Interactive status: Can this entity be interacted with by others?
+        """
+        
+        # Query LLM
+        result = query_llm(system_message, screenplay_text, EntityExtractionResult)
+        
+        if "error" in result:
+            raise ValueError(result["error"])
+        
+        # Validate response using Pydantic model
+        validated_result = EntityExtractionResult(
+            entities=result["entities"]
+        )
+        
+        return validated_result
 
-        # Get screenplay text either from file or direct input
-        if uploaded_file and uploaded_file.filename != '':
-            if not allowed_file(uploaded_file.filename):
-                flash("Invalid file type. Allowed: PDF, TXT, Fountain", "error")
-                return jsonify({"error": "Invalid file type"})
-            
-            screenplay_text = extract_text_from_file(uploaded_file)
-            if not screenplay_text:
-                flash("Could not extract text from file", "error")
-                return jsonify({"error": "Could not extract text from file"})
-        else:
-            screenplay_text = text_content
+    except Exception as e:
+        raise Exception(f"Entity extraction failed: {str(e)}")
 
-        if not screenplay_text or not screenplay_text.strip():
-            flash("No screenplay text found to analyze", "error")
-            return jsonify({"error": "No text to analyze"})
+def analyze_scene_interactions(screenplay_text: str, entities: Dict[str, Entity]) -> InteractionAnalysisResult:
+    """
+    Second phase: Analyze all interactions between entities in each scene
+    """
+    try:
+        # Create a context with entities for the LLM
+        entity_context = "\n".join([
+            f"ID: {entity_id} | Name: {entity_data['name']} | Type: {entity_data['type']}"
+            for entity_id, entity_data in entities.items()
+        ])
 
-        # Define prompt based on analysis type
-        prompts = {
-            'elements': "Extract and categorize all scene elements from the screenplay.",
-            'interactions': "Analyze all character interactions and group them by character.",
-            'game_setup': "Determine required Unity components for each character based on their interactions.",
-            'full': "Perform complete screenplay analysis including scene elements, character interactions, and Unity component requirements."
+        system_message = f"""
+        Using ONLY the entities listed below, analyze the screenplay and identify ALL interactions.
+        
+        Available Entities:
+        {entity_context}
+
+        For each scene:
+        1. Generate a unique Scene ID (S001, S002, etc.)
+        2. List all entities present in the scene
+        3. For each interaction:
+           - Generate a unique Interaction ID (I001, I002, etc.)
+           - Identify the subject entity (must be from the list)
+           - Identify the target entity (must be from the list)
+           - Describe the action/interaction
+           - Classify the type (physical, dialogue, observation, movement)
+
+        Return ONLY a JSON object with this structure:
+        {{
+            "scenes": {{
+                "S001": {{
+                    "id": "S001",
+                    "name": "Scene Name",
+                    "description": "Brief scene description",
+                    "entities_present": ["E001", "E002"]
+                }}
+            }},
+            "interactions": {{
+                "I001": {{
+                    "id": "I001",
+                    "scene_id": "S001",
+                    "subject_id": "E001",
+                    "target_id": "E002",
+                    "action": "Specific action description",
+                    "type": "physical|dialogue|observation|movement"
+                }}
+            }}
+        }}
+
+        Rules:
+        1. ONLY use entities from the provided list
+        2. Maintain chronological order of interactions
+        3. Include ALL significant interactions
+        4. Be specific in action descriptions
+        """
+
+        result = query_llm(system_message, screenplay_text, InteractionAnalysisResult)
+        
+        if "error" in result:
+            raise ValueError(result["error"])
+        
+        # Validate response using Pydantic model
+        validated_result = InteractionAnalysisResult(
+            scenes=result["scenes"],
+            interactions=result["interactions"]
+        )
+        
+        return validated_result
+
+    except Exception as e:
+        raise Exception(f"Interaction analysis failed: {str(e)}")
+
+def analyze_entity_components(entities: Dict[str, Entity], interactions: Dict[str, Interaction]) -> Dict[str, EntityComponents]:
+    """
+    Analyze entities and their interactions to determine required Unity components
+    """
+    try:
+        # Create context for the LLM with entities and their interactions
+        context = {
+            "entities": entities,
+            "interactions": interactions,
+            "available_components": UNITY_COMPONENTS
         }
 
-        analysis_result = query_llm(prompts.get(analysis_type, prompts['full']), screenplay_text)
+        system_message = f"""
+        Analyze each entity and their interactions to determine required Unity components.
         
-        if "error" in analysis_result:
-            return jsonify(analysis_result)
-            
-        flash("Analysis completed successfully!", "success")
-        return jsonify({
-            "analysis": analysis_result,
-            "source_type": "file" if uploaded_file else "text",
-            "file_name": uploaded_file.filename if uploaded_file else None,
-            "analysis_type": analysis_type
-        })
-    except Exception as e:
-        flash(str(e), "error")
-        return jsonify({"error": str(e)})
+        For each entity:
+        1. Consider all interactions where they are either subject or target
+        2. Determine required components based on their actions and roles
+        3. Provide reasoning for each component
+        
+        Use ONLY components from this predefined list:
+        {json.dumps(UNITY_COMPONENTS, indent=2)}
+        
+        Return ONLY a JSON object with this structure:
+        {
+            "entity_id": {
+                "entity_id": "E001",
+                "required_components": [
+                    {
+                        "component_id": "COMP001",
+                        "reason": "Specific reason based on interactions",
+                        "interactions": ["I001", "I002"]
+                    }
+                ]
+            }
+        }
+        """
 
+        result = query_llm(system_message, json.dumps(context), EntityComponents)
+        return result
+
+    except Exception as e:
+        raise Exception(f"Component analysis failed: {str(e)}")
+
+def validate_components(components_data: Dict[str, Any]) -> bool:
+    """
+    Validate that only predefined Unity components are used in the analysis
+    """
+    valid_component_ids = {comp["id"] for comp in UNITY_COMPONENTS.values()}
+    
+    try:
+        for entity_data in components_data.values():
+            for component in entity_data.get("required_components", []):
+                if component["component_id"] not in valid_component_ids:
+                    raise ValueError(f"Invalid component ID: {component['component_id']}")
+        return True
+    except Exception as e:
+        raise ValueError(f"Component validation failed: {str(e)}")
+
+def generate_timeline(scenes: Dict[str, Scene], interactions: Dict[str, Interaction], components: Dict[str, EntityComponents]) -> Timeline:
+    """
+    Generate a chronological timeline of interactions with estimated durations
+    """
+    try:
+        # Create context for the LLM
+        context = {
+            "scenes": scenes,
+            "interactions": interactions,
+            "components": components
+        }
+
+        system_message = """
+        Create a chronological timeline of interactions with estimated durations.
+        
+        For each interaction:
+        1. Estimate start time (in seconds from scene start)
+        2. Estimate duration based on action type
+        3. Identify components involved
+        
+        Rules for timing:
+        - Physical actions: 1-5 seconds
+        - Dialogue: 3-10 seconds
+        - Observations: 2-4 seconds
+        - Movement: Based on implied distance
+        
+        Return ONLY a JSON object with this structure:
+        {
+            "timeline": {
+                "scene_id": "S001",
+                "events": [
+                    {
+                        "interaction_id": "I001",
+                        "start_time": 0.0,
+                        "duration": 2.5,
+                        "components_involved": ["COMP001", "COMP002"]
+                    }
+                ]
+            }
+        }
+        
+        Ensure:
+        1. Events are chronologically ordered
+        2. No overlapping of incompatible actions
+        3. Realistic timing between related actions
+        4. Component involvement matches previous analysis
+        """
+
+        result = query_llm(system_message, json.dumps(context), Timeline)
+        return result
+
+    except Exception as e:
+        raise Exception(f"Timeline generation failed: {str(e)}")
+
+def perform_analysis(screenplay_text):
+    """
+    Perform analysis on the screenplay text.
+    This is a placeholder function that should contain the logic
+    for analyzing the screenplay and returning the results.
+    """
+    # Example analysis logic (replace with your actual logic)
+    entities = extract_entities(screenplay_text)  # Assuming you have an entity extraction function
+    interactions = analyze_interactions(screenplay_text)  # Assuming you have an interaction analysis function
+
+    # Combine results into a single response
+    return {
+        "entities": entities,
+        "interactions": interactions,
+        "message": "Analysis completed successfully."
+    }
+
+def validate_session_data(required_data: List[str]) -> bool:
+    """Validate that required data exists and is properly formatted"""
+    try:
+        for data_key in required_data:
+            if data_key not in session:
+                return False
+            # Add specific validation for each data type
+            if data_key == 'entities' and not isinstance(session[data_key], dict):
+                return False
+            # Add more validations as needed
+        return True
+    except Exception:
+        return False
 
 @app.route('/')
 def index():
     return render_template("index.html")
 
-
-@app.route('/chat', methods=['POST'])
-def chat():
-    print("Chat endpoint hit")  # Debug print
+@app.route('/analyze/entities', methods=['POST'])
+def analyze_entities():
     try:
-        user_input = request.form.get("user_input", "")
-        uploaded_file = request.files.get('file')
+        if 'file' in request.files:
+            uploaded_file = request.files['file']
+            screenplay_text = extract_text_from_file(uploaded_file)
+        else:
+            screenplay_text = request.form.get('text_content', '').strip()
+            
+        if not screenplay_text:
+            raise ValueError("No screenplay text provided")
+
+        # Get the analysis result
+        result = extract_entities(screenplay_text)
         
-        print(f"User input: {user_input}")  # Debug print
-        print(f"File received: {uploaded_file.filename if uploaded_file else 'No file'}")  # Debug print
+        # Convert Pydantic models to dict for JSON serialization
+        result_dict = result.model_dump()
         
-        if not uploaded_file or uploaded_file.filename == '':
-            return jsonify({"error": "No file uploaded"})
-
-        if not allowed_file(uploaded_file.filename):
-            return jsonify({"error": "Invalid file type. Allowed: PDF, TXT, Fountain"})
-
-        file_text = extract_text_from_file(uploaded_file)
-        if not file_text:
-            return jsonify({"error": "Could not extract text from file"})
-
-        # Process with LLM and get structured output
-        structured_response = query_llm(user_input, file_text)
-
+        # Store in session
+        session['screenplay_text'] = screenplay_text
+        session['entities'] = result_dict
+        
+        # Return the response with dict instead of Pydantic model
         return jsonify({
-            "response": structured_response,
-            "file_content": file_text[:500] + "..." if file_text else ""
+            "status": "success",
+            "entities": result_dict["entities"],
+            "message": "Entity extraction completed"
         })
-    except Exception as e:
-        print(f"Error in chat endpoint: {str(e)}")  # Debug print
-        return jsonify({"error": str(e)})
 
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 400
 
 @app.route('/download_json', methods=['POST'])
 def download_json():
@@ -286,6 +578,249 @@ def download_json():
         download_name='output.json',
         mimetype='application/json'
     )
+
+@app.route('/confirm/<analysis_type>', methods=['POST'])
+@requires_session_data('entities')  # Base requirement
+def confirm_analysis(analysis_type):
+    try:
+        valid_types = ['entities', 'interaction_analysis', 'component_analysis', 'interaction_map', 'timeline']
+        if analysis_type not in valid_types:
+            raise ValueError(f"Invalid analysis type: {analysis_type}")
+        
+        # Check additional requirements based on type
+        if analysis_type in ['component_analysis', 'interaction_map', 'timeline']:
+            if 'interactions' not in session:
+                raise ValueError("No interactions found. Complete interaction analysis first.")
+        
+        next_steps = {
+            'entities': ['interaction_analysis'],
+            'interaction_analysis': ['component_analysis', 'interaction_map', 'timeline'],
+            'component_analysis': [],
+            'interaction_map': [],
+            'timeline': []
+        }
+        
+        display_type = analysis_type.replace('_', ' ').title()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"{display_type} confirmed",
+            "next_steps": next_steps[analysis_type]
+        })
+
+    except Exception as e:
+        return error_response(e)
+
+@app.route('/analyze/interactions', methods=['POST'])
+@requires_session_data('entities', 'screenplay_text')
+def analyze_interactions():
+    try:
+        entities = session['entities']['entities']
+        screenplay_text = session['screenplay_text']
+        
+        result = analyze_scene_interactions(screenplay_text, entities)
+        
+        result_dict = result.model_dump()
+        session['scenes'] = result_dict['scenes']
+        session['interactions'] = result_dict['interactions']
+        
+        return jsonify({
+            "status": "success",
+            "message": "Interaction analysis completed",
+            "scenes": result_dict['scenes'],
+            "interactions": result_dict['interactions']
+        })
+
+    except Exception as e:
+        return error_response(e)
+
+@app.route('/analyze/components', methods=['POST'])
+def analyze_components():
+    try:
+        if 'entities' not in session or 'interactions' not in session:
+            return jsonify({"error": "Missing required data. Please complete previous steps."})
+        
+        entities = session['entities']['entities']
+        interactions = session['interactions']
+        
+        # Perform component analysis
+        result = analyze_entity_components(entities, interactions)
+        
+        # Validate components
+        validate_components(result)
+        
+        # Add component descriptions to the result
+        for entity_data in result.values():
+            for component in entity_data["required_components"]:
+                for unity_comp, comp_data in UNITY_COMPONENTS.items():
+                    if comp_data["id"] == component["component_id"]:
+                        component["description"] = comp_data["description"]
+                        component["name"] = unity_comp
+        
+        # Store results in session
+        session['components'] = result
+        
+        return jsonify({
+            "status": "success",
+            "message": "Component analysis completed",
+            "components": result
+        })
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/analyze/timeline', methods=['POST'])
+def analyze_timeline():
+    try:
+        # Check for required session data
+        if not all(key in session for key in ['scenes', 'interactions', 'components']):
+            return jsonify({"error": "Missing required data. Please complete previous steps."})
+        
+        scenes = session['scenes']
+        interactions = session['interactions']
+        components = session['components']
+        
+        # Generate timeline
+        timeline = generate_timeline(scenes, interactions, components)
+        
+        # Store in session
+        session['timeline'] = timeline.model_dump()
+        
+        return jsonify({
+            "status": "success",
+            "message": "Timeline generated successfully",
+            "timeline": timeline.model_dump()
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/export/timeline', methods=['GET'])
+def export_timeline():
+    try:
+        if 'timeline' not in session:
+            return jsonify({"error": "No timeline found. Please generate first."})
+            
+        timeline = session['timeline']
+        interactions = session['interactions']
+        
+        # Create detailed export format
+        export_data = {
+            "metadata": {
+                "generated_at": datetime.now().isoformat(),
+                "version": "1.0"
+            },
+            "timeline": {
+                "total_duration": sum(event["duration"] for event in timeline["events"]),
+                "events": []
+            }
+        }
+        
+        # Add detailed event information
+        for event in timeline["events"]:
+            interaction = interactions.get(event["interaction_id"], {})
+            export_data["timeline"]["events"].append({
+                **event,
+                "interaction_details": interaction
+            })
+            
+        # Create the response with the JSON file
+        response = make_response(jsonify(export_data))
+        response.headers['Content-Type'] = 'application/json'
+        response.headers['Content-Disposition'] = 'attachment; filename=scene_timeline.json'
+        
+        return response
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/redo/interactions', methods=['POST'])
+def redo_interactions():
+    try:
+        # Keep entities but clear interactions
+        if 'interactions' in session:
+            session.pop('interactions')
+        if 'scenes' in session:
+            session.pop('scenes')
+            
+        return jsonify({
+            "status": "success",
+            "message": "Ready for new interaction analysis"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/export/components', methods=['GET'])
+def export_components():
+    try:
+        if 'components' not in session:
+            return jsonify({"error": "No component analysis found. Please analyze first."})
+            
+        components = session['components']
+        entities = session['entities']['entities']
+        
+        # Create a more detailed export format
+        export_data = {
+            "metadata": {
+                "generated_at": datetime.now().isoformat(),
+                "version": "1.0"
+            },
+            "entities": {},
+        }
+        
+        # Combine entity info with their components
+        for entity_id, component_data in components.items():
+            entity_info = entities.get(entity_id, {})
+            export_data["entities"][entity_id] = {
+                "name": entity_info.get("name", "Unknown"),
+                "type": entity_info.get("type", "Unknown"),
+                "components": component_data["required_components"]
+            }
+            
+        # Create the response with the JSON file
+        response = make_response(jsonify(export_data))
+        response.headers['Content-Type'] = 'application/json'
+        response.headers['Content-Disposition'] = 'attachment; filename=entity_components.json'
+        
+        return response
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/analyze/interaction-map', methods=['GET'])
+@requires_session_data('entities', 'interactions')
+def get_interaction_map():
+    try:
+        entities = session['entities']['entities']
+        interactions = session['interactions']
+        
+        # Create interaction map grouped by subject
+        interaction_map = {}
+        for entity_id, entity_data in entities.items():
+            interaction_map[entity_id] = {
+                "name": entity_data["name"],
+                "as_subject": [],
+                "as_target": []
+            }
+            
+            # Map interactions where entity is subject or target
+            for interaction_id, interaction in interactions.items():
+                if interaction["subject_id"] == entity_id:
+                    interaction_map[entity_id]["as_subject"].append(interaction)
+                if interaction["target_id"] == entity_id:
+                    interaction_map[entity_id]["as_target"].append(interaction)
+        
+        return jsonify({
+            "status": "success",
+            "interaction_map": interaction_map
+        })
+
+    except Exception as e:
+        return error_response(e)
+
 
 if __name__ == '__main__':
     app.run(debug=True)

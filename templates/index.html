@@ -2,60 +2,105 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Script3D Chat Interface</title>
-    <!-- Font Awesome CDN for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screenplay Analysis</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style/main.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
-<div class="chat-container">
-    <div class="chat-header">
-        Script3D Chat Interface
-    </div>
-    <div class="flash-messages">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-    </div>
-    <div class="chat-messages" id="chatMessages">
-        <!-- Chat messages will be appended here -->
-    </div>
-    <!-- Add selected file display -->
-    <div class="selected-file" style="display: none;">
-        <span id="fileName"></span>
-        <button id="clearFileBtn">×</button>
-    </div>
-    <div class="chat-footer">
-        <!-- Inside the chat-footer div, modify the chat-input-container -->
-        <div class="chat-input-container">
-            <!-- Add file upload button -->
-            <label for="fileInput" class="upload-btn" title="Upload PDF, TXT, or Fountain file">
-                <i class="fas fa-plus"></i>
-                <input type="file" id="fileInput" accept=".pdf,.txt,.fountain" style="display: none;">
-            </label>
+    <!-- Main App Container -->
+    <div class="app-container">
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Header Bar -->
+            <header class="top-bar">
+                <div class="breadcrumb">
+                    <i class="fas fa-robot"></i>
+                    <span>Screenplay Analysis</span>
+                </div>
+            </header>
 
-            <textarea 
-                id="chatInput" 
-                placeholder="Paste your screenplay text here or use the upload button to select a file..."
-                title="You can either paste your screenplay text here or upload a file"></textarea>
-            <button id="sendBtn" title="Send Message"><i class="fas fa-paper-plane"></i></button>
-            <button id="retryBtn" title="Retry Chat"><i class="fas fa-redo"></i></button>
-        </div>
-        <div id="creditSpan">Script3D Product of Olawale Eniola Emmanuel...</div>
+            <!-- Content Wrapper -->
+            <div class="content-wrapper">
+                <!-- Input Card -->
+                <div class="card input-card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-file-alt"></i> Input Screenplay</h2>
+                        <div class="card-actions">
+                            <button class="btn-icon" title="Help">
+                                <i class="fas fa-question-circle"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="input-group">
+                            <textarea id="chatInput" placeholder="Paste your screenplay text here..."></textarea>
+                        </div>
+                        
+                        <div class="upload-zone" id="dropZone">
+                            <input type="file" id="fileInput" accept=".pdf,.txt,.fountain" hidden>
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Drag & drop your file here or</p>
+                            <button class="btn-upload" onclick="document.getElementById('fileInput').click()">
+                                Choose File
+                            </button>
+                            <p class="file-info">Supports: PDF, TXT, Fountain</p>
+                        </div>
+
+                        <div class="selected-file" id="selectedFile" style="display: none;">
+                            <i class="fas fa-file-alt"></i>
+                            <span id="fileName">filename.txt</span>
+                            <button class="btn-icon" onclick="clearFileSelection()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn-primary" onclick="startAnalysis()">
+                            <i class="fas fa-play"></i>
+                            Start Analysis
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div class="card results-card" id="results-section" style="display: none;">
+                    <div class="card-header">
+                        <h2><i class="fas fa-chart-bar"></i> Analysis Results</h2>
+                        <div class="card-actions">
+                            <button class="btn-icon" title="Download JSON">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="tabs">
+                            <button class="tab-btn active" data-tab="entities">
+                                <i class="fas fa-users"></i> Entities
+                            </button>
+                            <button class="tab-btn" data-tab="interactions">
+                                <i class="fas fa-project-diagram"></i> Interactions
+                            </button>
+                            <button class="tab-btn" data-tab="timeline">
+                                <i class="fas fa-clock"></i> Timeline
+                            </button>
+                        </div>
+                        
+                        <div class="tab-content">
+                            <div id="entities-list" class="tab-pane active"></div>
+                            <div id="interactions-list" class="tab-pane"></div>
+                            <div id="timeline-list" class="tab-pane"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
-</div>
 
-<!-- JSON side panel -->
-<div id="jsonViewPanel"></div>
-<!-- Bookmark-style toggle tab -->
-<div id="toggleTab" title="Toggle JSON view">JSON</div>
-<!-- Download JSON button (hidden until available) -->
-<button id="downloadJson" title="Download JSON"><i class="fas fa-download"></i></button>
+    <!-- Flash Messages Container -->
+    <div id="flash-messages"></div>
 
-<script type="text/javascript" src="{{ url_for('static', filename='javascript/main.js') }}" defer></script>
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='javascript/main.js') }}"></script>
 </body>
 </html>

@@ -1,5 +1,7 @@
 flask
 groq
 pydantic
-dotenv
-pyPDF2
+python-dotenv
+pypdf
+pytest
+pytest-mock
