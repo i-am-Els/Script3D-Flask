@@ -19,7 +19,7 @@ python -m venv .venv
 ```
 - Activate environment
 ```shell
-.venv/Scripts/activate.bat
+.venv/Scripts/activate
 ```
 #### Install Requirements
 Install all the required modules of your app like flask, groq etc.
@@ -62,3 +62,9 @@ You can also type in the screenplay in the text area or paste a plain text scree
 
 #### Output
 A downloadable json of the structure of elements extracted from the process.
+
+### Testing
+To run the tests, use the command below.
+```shell
+python -m pytest
+```
