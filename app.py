@@ -1,10 +1,11 @@
 from flask import Flask, render_template, request, jsonify, send_file, flash, session, make_response
+from flask_session import Session
 import json
 import io
 import os
 from pypdf import PdfReader
 from groq import Groq
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional, Dict, Literal, Any
 from dotenv import load_dotenv
 from enum import Enum
@@ -12,11 +13,20 @@ from datetime import datetime
 from functools import wraps
 from dataclasses import dataclass
 
+
 load_dotenv()  # Add this near the top of your script
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB limit
 app.secret_key = os.environ['FLASK_SECRET_KEY']  # Simplified since we know the key exists
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+
+# Create and initialize the Flask-Session object AFTER `app` has been configured
+server_session = Session(app)
+# Session(app)
+
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'fountain'}
@@ -61,9 +71,10 @@ class ComponentRequirement(BaseModel):
     component_id: str
     reason: str
     interactions: List[str]
+    description: str
+    name: str
 
 class EntityComponents(BaseModel):
-    entity_id: str
     required_components: List[ComponentRequirement]
 
 class InteractionRole(BaseModel):
@@ -96,13 +107,13 @@ class InteractionAnalysisResult(BaseModel):
 
 # Final Analysis Results
 class EntityComponentResult(BaseModel):
-    entity_components: Dict[str, EntityComponents]
+    entities: Dict[str, EntityComponents]
 
 class InteractionMapResult(BaseModel):
     interaction_map: Dict[str, EntityInteractionMap]
 
 class TimelineResult(BaseModel):
-    timeline: Timeline
+    timelines: List[Timeline]
 
 class ScreenplayAnalysis(BaseModel):
     characters: Dict[str, dict]
@@ -238,7 +249,7 @@ def query_llm(prompt: str, context: str, response_model: Optional[BaseModel] = N
         completion = client.chat.completions.create(
             messages=[
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": context}
+                {"role": "user", "content": context_summary}
             ],
             model="mixtral-8x7b-32768",
             temperature=0.1,
@@ -250,8 +261,8 @@ def query_llm(prompt: str, context: str, response_model: Optional[BaseModel] = N
         
         # Validate with model if provided
         if response_model:
-            validated_data = response_model.parse_obj(response_data)
-            return validated_data.dict()
+            validated_data = response_model.model_validate(response_data)
+            return validated_data.model_dump()
         
         return response_data
 
@@ -328,15 +339,15 @@ def analyze_scene_interactions(screenplay_text: str, entities: Dict[str, Entity]
         Available Entities:
         {entity_context}
 
-        For each scene:
+        For EACH and EVERY scene:
         1. Generate a unique Scene ID (S001, S002, etc.)
-        2. List all entities present in the scene
-        3. For each interaction:
+        2. For EACH and EVERY interaction:
            - Generate a unique Interaction ID (I001, I002, etc.)
-           - Identify the subject entity (must be from the list)
-           - Identify the target entity (must be from the list)
+           - Identify the subject entity (must be from the Available Entities list)
+           - Identify the target entity (must be from the Available Entities list)
            - Describe the action/interaction
            - Classify the type (physical, dialogue, observation, movement)
+        3. List EACH and EVERY entities present in the scene. The entities must be either a subject or a target found in the interactions of the scene.
 
         Return ONLY a JSON object with this structure:
         {{
@@ -363,7 +374,7 @@ def analyze_scene_interactions(screenplay_text: str, entities: Dict[str, Entity]
         Rules:
         1. ONLY use entities from the provided list
         2. Maintain chronological order of interactions
-        3. Include ALL significant interactions
+        3. Include ALL significant interactions in each scene
         4. Be specific in action descriptions
         """
 
@@ -383,7 +394,7 @@ def analyze_scene_interactions(screenplay_text: str, entities: Dict[str, Entity]
     except Exception as e:
         raise Exception(f"Interaction analysis failed: {str(e)}")
 
-def analyze_entity_components(entities: Dict[str, Entity], interactions: Dict[str, Interaction]) -> Dict[str, EntityComponents]:
+def analyze_entity_components(entities: Dict[str, Entity], interactions: Dict[str, Interaction]) -> EntityComponentResult:
     """
     Analyze entities and their interactions to determine required Unity components
     """
@@ -398,51 +409,75 @@ def analyze_entity_components(entities: Dict[str, Entity], interactions: Dict[st
         system_message = f"""
         Analyze each entity and their interactions to determine required Unity components.
         
-        For each entity:
+        For EACH and EVERY entity:
         1. Consider all interactions where they are either subject or target
-        2. Determine required components based on their actions and roles
-        3. Provide reasoning for each component
+        2. Determine required components based on each of their actions and roles
+        3. Provide reasoning for the choice of each component
+        4. Provide a description and name for each component, using the predefined component iteratables below
         
         Use ONLY components from this predefined list:
         {json.dumps(UNITY_COMPONENTS, indent=2)}
         
         Return ONLY a JSON object with this structure:
-        {
-            "entity_id": {
-                "entity_id": "E001",
-                "required_components": [
-                    {
-                        "component_id": "COMP001",
-                        "reason": "Specific reason based on interactions",
-                        "interactions": ["I001", "I002"]
-                    }
-                ]
-            }
-        }
+        {{
+            "entities": {{
+                "E001": {{
+                    "required_components": [
+                        {{
+                            "component_id": "COMP001",
+                            "reason": "Specific reason based on interactions",
+                            "interactions": ["I001", "I002"],
+                            "description": "Description of the component",
+                            "name": "Name of the component"
+                        }}
+                    ]
+                }},
+                "E002": {{
+                    "required_components": [
+                        {{
+                            "component_id": "COMP002",
+                            "reason": "Another reason based on interactions",
+                            "interactions": ["I003", "I004"],
+                            "description": "Description of the component",
+                            "name": "Name of the component"
+                        }}
+                    ]
+                }}
+            }}
+        }}
         """
 
-        result = query_llm(system_message, json.dumps(context), EntityComponents)
-        return result
+        result = query_llm(system_message, json.dumps(context), EntityComponentResult)
+        if "error" in result:
+            raise ValueError(result["error"])
+        
+        # Validate response using Pydantic model
+        try:
+            validated_result = EntityComponentResult(**result)
+        except ValidationError as e:
+            raise ValueError(f"Validation failed: {e.errors()}")
+        
+        return validated_result
 
     except Exception as e:
-        raise Exception(f"Component analysis failed: {str(e)}")
+        raise Exception(f"Component analysis failed: {str(e)}. Response: {result}")
 
-def validate_components(components_data: Dict[str, Any]) -> bool:
+def validate_components(components_data: EntityComponentResult) -> bool:
     """
-    Validate that only predefined Unity components are used in the analysis
+    Validate that only predefined Unity components are used in the analysis.
     """
     valid_component_ids = {comp["id"] for comp in UNITY_COMPONENTS.values()}
     
     try:
-        for entity_data in components_data.values():
-            for component in entity_data.get("required_components", []):
-                if component["component_id"] not in valid_component_ids:
-                    raise ValueError(f"Invalid component ID: {component['component_id']}")
+        for entity_data in components_data.entities.values():
+            for component in entity_data.required_components:
+                if component.component_id not in valid_component_ids:
+                    raise ValueError(f"Invalid component ID: {component.component_id}")
         return True
     except Exception as e:
         raise ValueError(f"Component validation failed: {str(e)}")
 
-def generate_timeline(scenes: Dict[str, Scene], interactions: Dict[str, Interaction], components: Dict[str, EntityComponents]) -> Timeline:
+def generate_timeline(scenes: Dict[str, Scene], interactions: Dict[str, Interaction], components: Dict[str, EntityComponents]) -> TimelineResult:
     """
     Generate a chronological timeline of interactions with estimated durations
     """
@@ -470,28 +505,50 @@ def generate_timeline(scenes: Dict[str, Scene], interactions: Dict[str, Interact
         
         Return ONLY a JSON object with this structure:
         {
-            "timeline": {
-                "scene_id": "S001",
-                "events": [
-                    {
-                        "interaction_id": "I001",
-                        "start_time": 0.0,
-                        "duration": 2.5,
-                        "components_involved": ["COMP001", "COMP002"]
-                    }
-                ]
-            }
+            "timelines": [
+                {
+                    "scene_id": "S001",
+                    "events": [
+                        {
+                            "interaction_id": "I001",
+                            "start_time": 0.0,
+                            "duration": 2.5,
+                            "components_involved": ["COMP001", "COMP002"]
+                        }
+                    ]
+                },
+                {
+                    "scene_id": "S002",
+                    "events": [
+                        {
+                            "interaction_id": "I002",
+                            "start_time": 1.0,
+                            "duration": 3.0,
+                            "components_involved": ["COMP003"]
+                        }
+                    ]
+                }
+            ]
         }
         
         Ensure:
         1. Events are chronologically ordered
-        2. No overlapping of incompatible actions
+        2. Possibility of overlapping actions(parallel actions)
         3. Realistic timing between related actions
         4. Component involvement matches previous analysis
         """
 
-        result = query_llm(system_message, json.dumps(context), Timeline)
-        return result
+        result = query_llm(system_message, json.dumps(context), TimelineResult)
+        if "error" in result:
+            raise ValueError(result["error"])
+        
+        # Validate response using Pydantic model
+        try:
+            validated_result = TimelineResult(**result)
+        except ValidationError as e:
+            raise ValueError(f"Validation failed: {e.errors()}")
+        
+        return validated_result
 
     except Exception as e:
         raise Exception(f"Timeline generation failed: {str(e)}")
@@ -594,9 +651,8 @@ def confirm_analysis(analysis_type):
         
         next_steps = {
             'entities': ['interaction_analysis'],
-            'interaction_analysis': ['component_analysis', 'interaction_map', 'timeline'],
-            'component_analysis': [],
-            'interaction_map': [],
+            'interaction_analysis': ['component_analysis'],
+            'component_analysis': ['timeline'],
             'timeline': []
         }
         
@@ -647,24 +703,23 @@ def analyze_components():
         result = analyze_entity_components(entities, interactions)
         
         # Validate components
-        validate_components(result)
-        
-        # Add component descriptions to the result
-        for entity_data in result.values():
-            for component in entity_data["required_components"]:
-                for unity_comp, comp_data in UNITY_COMPONENTS.items():
-                    if comp_data["id"] == component["component_id"]:
-                        component["description"] = comp_data["description"]
-                        component["name"] = unity_comp
-        
-        # Store results in session
-        session['components'] = result
-        
-        return jsonify({
-            "status": "success",
-            "message": "Component analysis completed",
-            "components": result
-        })
+        if validate_components(result):
+            temp_unity_components = []
+            for key, value in UNITY_COMPONENTS.items():
+                temp_unity_components.append({key: value})
+            # Store results in session
+            result_dict = result.model_dump()['entities']
+            session['components'] = result_dict
+            session['unity_components'] = temp_unity_components
+            
+            return jsonify({
+                "status": "success",
+                "message": "Component analysis completed",
+                "components": result_dict,
+                "unity_components": temp_unity_components
+            })
+        else:
+            return jsonify({"error": "Invalid components. Please try again."}), 400
 
     except ValueError as ve:
         return jsonify({"error": str(ve)})
@@ -686,12 +741,12 @@ def analyze_timeline():
         timeline = generate_timeline(scenes, interactions, components)
         
         # Store in session
-        session['timeline'] = timeline.model_dump()
+        session['timelines'] = timeline.model_dump()
         
         return jsonify({
             "status": "success",
             "message": "Timeline generated successfully",
-            "timeline": timeline.model_dump()
+            "timelines": timeline.model_dump()
         })
 
     except Exception as e:
@@ -700,10 +755,10 @@ def analyze_timeline():
 @app.route('/export/timeline', methods=['GET'])
 def export_timeline():
     try:
-        if 'timeline' not in session:
+        if 'timelines' not in session:
             return jsonify({"error": "No timeline found. Please generate first."})
             
-        timeline = session['timeline']
+        timelines = session['timelines']
         interactions = session['interactions']
         
         # Create detailed export format
@@ -713,13 +768,13 @@ def export_timeline():
                 "version": "1.0"
             },
             "timeline": {
-                "total_duration": sum(event["duration"] for event in timeline["events"]),
+                "total_duration": sum(event["duration"] for event in timelines[0]["events"]),
                 "events": []
             }
         }
         
         # Add detailed event information
-        for event in timeline["events"]:
+        for event in timelines[0]["events"]:
             interaction = interactions.get(event["interaction_id"], {})
             export_data["timeline"]["events"].append({
                 **event,

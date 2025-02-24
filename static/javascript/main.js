@@ -1,4 +1,6 @@
+let droppedFile = null;
 // Flash message function
+
 function flash(message, type = 'info') {
     const flashContainer = document.getElementById('flash-messages');
     const flashMessage = document.createElement('div');
@@ -20,6 +22,7 @@ function flash(message, type = 'info') {
 
 // File handling functions
 function handleFile(file) {
+    console.log('handleFile', file);
     if (!file) return;
     
     // Check file type
@@ -92,16 +95,51 @@ function unhighlight(e) {
 function handleDrop(e) {
     const dt = e.dataTransfer;
     const file = dt.files[0];
+    droppedFile = file;
     handleFile(file);
+
 }
+
+function clearTabs() {
+    // Remove all contents from the timeline editor.
+    const timelineEditor = document.getElementById('timeline-editor');
+    if (timelineEditor) {
+        timelineEditor.innerHTML = '';
+    }
+    // Remove all contents from the timeline section.
+    const timelineSection = document.getElementById('timeline-table');
+    if (timelineSection) {
+        timelineSection.innerHTML = '';
+    }
+
+    // Remove all contents from the entities list.
+    const entitiesList = document.getElementById('entities-list');
+    if (entitiesList) {
+        entitiesList.innerHTML = '';
+    }
+
+    // Remove all contents from the interactions list.
+    const interactionsList = document.getElementById('interactions-list');
+    if (interactionsList) {
+        interactionsList.innerHTML = '';
+    }
+
+    // Remove all contents from the components list.
+    const componentsList = document.getElementById('components-list');
+    if (componentsList) {
+        componentsList.innerHTML = '';
+    }
+}
+
 
 // Start entity analysis
 async function startAnalysis() {
+    clearTabs();
     const chatInput = document.getElementById('chatInput');
     const fileInput = document.getElementById('fileInput');
     const analyzeBtn = document.querySelector('.btn-primary');
     const textContent = chatInput.value.trim();
-    const file = fileInput.files[0];
+    const file = fileInput.files[0] ? fileInput.files[0] : droppedFile;
 
     if (!textContent && !file) {
         flash('Please either upload a file or paste your screenplay text.', 'error');
@@ -109,9 +147,7 @@ async function startAnalysis() {
     }
 
     // Show loading state
-    const originalContent = analyzeBtn.innerHTML;
-    analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
-    analyzeBtn.disabled = true;
+    const originalContent = setLoadingState(analyzeBtn, true);
 
     try {
         const formData = new FormData();
@@ -141,12 +177,12 @@ async function startAnalysis() {
         // Show next step options
         showNextSteps(['interaction_analysis']);
 
+        switchTab('entities');
     } catch (error) {
         console.error('Error:', error);
         flash('Error processing request', 'error');
     } finally {
-        analyzeBtn.innerHTML = originalContent;
-        analyzeBtn.disabled = false;
+        setLoadingState(analyzeBtn, false, originalContent);
     }
 }
 
@@ -240,13 +276,23 @@ function showNextSteps(steps) {
     }
     
     // Create next steps for interactions tab
-    if (steps.includes('component_analysis') || steps.includes('timeline')) {
+    if (steps.includes('component_analysis')) {
         const interactionNextSteps = createNextStepsElement(
-            ['component_analysis', 'timeline'], 
+            ['component_analysis'], 
             'interactions'
         );
         document.getElementById('interactions-list').appendChild(interactionNextSteps);
     }
+
+    // Create next steps for interactions tab
+    if (steps.includes('timeline')) {
+        const interactionNextSteps = createNextStepsElement(
+            ['timeline'], 
+            'components'
+        );
+        document.getElementById('components-list').appendChild(interactionNextSteps);
+    }
+
 }
 
 function createNextStepsElement(steps, tabId) {
@@ -258,7 +304,7 @@ function createNextStepsElement(steps, tabId) {
         <h3>Next Steps</h3>
         <div class="steps-container">
             ${steps.map(step => `
-                <button class="btn-next-step" onclick="confirmAndProceed('${step}')">
+                <button id="btn-${step}" class="btn-next-step" onclick="confirmAndProceed('${step}')">
                     <i class="fas fa-arrow-right"></i>
                     Proceed to ${toTitleCase(step)}
                 </button>
@@ -286,13 +332,16 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function switchTab(tabId) {
-    // Remove active class from all tabs and content
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-    
+    // Remove active class from all top-level tabs and content
+    document.querySelectorAll('.tab-btn:not(#timeline-list .tab-btn)').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-pane:not(#timeline-list .tab-pane)').forEach(pane => pane.classList.remove('active'));
+
     // Add active class to selected tab and content
-    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-    document.getElementById(`${tabId}-list`).classList.add('active');
+    const selectedTab = document.querySelector(`[data-tab="${tabId}"]`);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+        document.getElementById(`${tabId}-list`).classList.add('active');
+    }
 }
 
 async function confirmAndProceed(analysisType) {
@@ -327,6 +376,9 @@ async function confirmAndProceed(analysisType) {
 }
 
 async function startInteractionAnalysis() {
+    const analyzeBtn = document.getElementById('btn-interaction_analysis'); // Use the specific ID for the button
+    const originalContent = setLoadingState(analyzeBtn, true); // Set loading state
+
     try {
         const response = await fetch('/analyze/interactions', {
             method: 'POST'
@@ -340,14 +392,19 @@ async function startInteractionAnalysis() {
 
         displayInteractions(data.scenes, data.interactions);
         flash('Interaction analysis completed!', 'success');
-        showNextSteps(['component_analysis', 'timeline']);
+        showNextSteps(['component_analysis']);
     } catch (error) {
         const err_msg = `Error analyzing interactions: ${error}`;
         flash(err_msg, 'error');
+    } finally {
+        setLoadingState(analyzeBtn, false, originalContent); // Restore button state
     }
 }
 
 async function startComponentAnalysis() {
+    const analyzeBtn = document.getElementById('btn-component_analysis'); // Use the specific ID for the button
+    const originalContent = setLoadingState(analyzeBtn, true); // Set loading state
+
     try {
         const response = await fetch('/analyze/components', {
             method: 'POST'
@@ -359,14 +416,22 @@ async function startComponentAnalysis() {
             return;
         }
 
-        displayComponents(data.components);
+        displayComponents(data);
         flash('Component analysis completed!', 'success');
+
+        showNextSteps(['timeline']);
     } catch (error) {
-        flash('Error analyzing components', 'error');
+        const err_msg = `Error analyzing components: ${error}`;
+        flash(err_msg, 'error');
+    } finally {
+        setLoadingState(analyzeBtn, false, originalContent); // Restore button state
     }
 }
 
 async function generateTimeline() {
+    const analyzeBtn = document.getElementById('btn-timeline'); // Use the specific ID for the button
+    const originalContent = setLoadingState(analyzeBtn, true); // Set loading state
+
     try {
         const response = await fetch('/analyze/timeline', {
             method: 'POST'
@@ -378,10 +443,16 @@ async function generateTimeline() {
             return;
         }
 
-        displayTimeline(data.timeline);
+        displayTimelines(data.timelines);
         flash('Timeline generated successfully!', 'success');
+
+        showNextSteps(['']);
+
     } catch (error) {
-        flash('Error generating timeline', 'error');
+        const err_msg = `Error generating timeline: ${error}`;
+        flash(err_msg, 'error');
+    } finally {
+        setLoadingState(analyzeBtn, false, originalContent); // Restore button state
     }
 }
 
@@ -509,3 +580,231 @@ function getInteractionIcon(type) {
     };
     return icons[type.toLowerCase()] || 'fa-question';
 }
+
+// Function to display component analysis results
+function displayComponents(components) {
+    const componentsList = document.getElementById('components-list');
+    componentsList.innerHTML = ''; // Clear previous content
+
+    if (!components || Object.keys(components).length === 0) {
+        componentsList.innerHTML = '<p>No component analysis results found.</p>';
+        return;
+    }
+
+    // Create a container for the two-column layout
+    const container = document.createElement('div');
+    container.className = 'components-container';
+
+    // Left column for Unity components
+    const leftColumn = document.createElement('div');
+    leftColumn.className = 'components-left-column';
+
+    // Right column for component analysis data
+    const rightColumn = document.createElement('div');
+    rightColumn.className = 'components-right-column';
+
+    console.log(components.unity_components);
+
+    // Populate the left column with Unity components
+    if (components && Array.isArray(components.unity_components)) {
+        // Create and append the header
+        const header = document.createElement('h3');
+        header.textContent = 'All Available Components';
+        header.style.fontSize = '0.9rem'; // Adjust font size as needed
+        header.style.marginBottom = '0.7rem'; // Space below the header
+        leftColumn.appendChild(header);
+
+        components.unity_components.forEach(component => {
+            const componentName = Object.keys(component)[0]; // Get the component name (key)
+            const componentDetails = component[componentName]; // Get the details using the name
+
+            const componentItem = document.createElement('div');
+            componentItem.className = 'component-item';
+            componentItem.innerHTML = `
+                <div>
+                    <span class="component-name"><i class="fas fa-cog"></i>${componentName}</span>
+                    <span class="component-id" style="background-color: #e0e0e0; padding: 2px 5px; border-radius: 3px;">(${componentDetails.id})</span>
+                    <div class="component-details">
+                        <p>${componentDetails.description}</p>
+                    </div>
+                </div>
+            `;
+            leftColumn.appendChild(componentItem);
+        });
+    } else {
+        const noComponentsMessage = document.createElement('p');
+        noComponentsMessage.textContent = 'No Unity components found.';
+        leftColumn.appendChild(noComponentsMessage);
+    }
+
+    // Populate the right column with component analysis data
+    Object.entries(components.components).forEach(([entityId, entityData]) => {
+        const entitySection = document.createElement('div');
+        entitySection.className = 'entity-section';
+        entitySection.innerHTML = `
+            <div class="entity-card">
+                <div class="entity-header">
+                    <span class="entity-name">Entity ID: </span>
+                    <span class="entity-id">${entityId}</span>
+                </div>
+                <div class="required-components">
+                    <h5>Required Components:</h5>
+                    <table class="components-table">
+                        <thead>
+                            <tr>
+                                <th>Component ID</th>
+                                <th>Reason</th>
+                                <th>Interactions</th>
+                                <th>Description</th>
+                                <th>Name</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${entityData.required_components.map(component => `
+                                <tr>
+                                    <td>${component.component_id}</td>
+                                    <td>${component.reason}</td>
+                                    <td>${component.interactions.join(', ')}</td>
+                                    <td>${component.description || 'N/A'}</td>
+                                    <td>${component.name || 'N/A'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        rightColumn.appendChild(entitySection);
+    });
+
+    // Add the left and right columns to the container
+    container.appendChild(leftColumn);
+    container.appendChild(rightColumn);
+
+    // Append the container to the components list
+    componentsList.appendChild(container);
+
+    // Switch to the components tab
+    switchTab('components'); 
+}
+
+function setLoadingState(button, isLoading, originalContent=null) {
+    if (isLoading) {
+        if (originalContent === null) {
+            originalContent = button.innerHTML;
+        }
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+        button.disabled = true;
+        return originalContent; // Return the original content for later use
+    } else {
+        if (originalContent !== null) {
+            button.innerHTML = originalContent; // Restore original content
+        }
+        button.disabled = false;
+    }
+}
+
+function displayTimelines(timelines) {
+    const timelineSection = document.getElementById('timeline-table');
+    timelineSection.innerHTML = ''; // Clear previous content
+
+    if (!timelines || timelines.length === 0) {
+        timelineSection.innerHTML = '<p>No timeline events found.</p>';
+        return;
+    }
+    
+    const timelineEditor = document.getElementById('timeline-editor');
+    timelineEditor.innerHTML = ''; // Clear previous content
+    
+    if (!timelines || timelines.length === 0) {
+        timelineEditor.innerHTML = '<p>No timeline events found.</p>';
+        return;
+    }
+    
+    // Create a container for the timeline
+    const timelineContainer = document.createElement('div');
+    timelineContainer.className = 'timeline-container';
+
+    timelines.timelines.forEach(timeline => {
+        // Create a header for each scene
+        const header = document.createElement('h3');
+        header.textContent = `Timeline for Scene ID: ${timeline.scene_id}`;
+        timelineSection.appendChild(header);
+        
+        // Create a table for the timeline events
+        const table = document.createElement('table');
+        table.className = 'timeline-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Interaction ID</th>
+                    <th>Start Time</th>
+                    <th>Duration</th>
+                    <th>Components Involved</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${timeline.events.map(event => `
+                    <tr>
+                        <td>${event.interaction_id}</td>
+                        <td>${event.start_time.toFixed(2)}s</td>
+                        <td>${event.duration.toFixed(2)}s</td>
+                        <td>${event.components_involved.join(', ')}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+
+        // Append the table to the timeline section
+        timelineSection.appendChild(table);
+        
+        // Display the timeline editor.
+    
+        const sceneDiv = document.createElement('div');
+        sceneDiv.className = 'scene-timeline';
+        const sceneHeader = document.createElement('h4');
+        sceneHeader.textContent = `Scene ID: ${timeline.scene_id}`;
+        sceneDiv.appendChild(sceneHeader);
+        
+        // Create a timeline track
+        const track = document.createElement('div');
+        track.className = 'timeline-track';
+        
+        timeline.events.forEach(event => {
+            const eventBlock = document.createElement('div');
+            eventBlock.className = 'timeline-event';
+            eventBlock.style.left = `${event.start_time * 10}px`; // Scale factor for visualization
+            eventBlock.style.width = `${event.duration * 10}px`; // Scale factor for visualization
+            eventBlock.title = `Interaction ID: ${event.interaction_id}`; // Tooltip for interaction ID
+            track.appendChild(eventBlock);
+        });
+        
+        sceneDiv.appendChild(track);
+        timelineContainer.appendChild(sceneDiv);
+        
+        timelineEditor.appendChild(timelineContainer);
+    });
+    
+    switchTab('timeline');
+}
+
+function setupTimelineTabs() {
+    const tabButtons = document.querySelectorAll('#timeline-list .timeline-tab-btn');
+    const tabPanes = document.querySelectorAll('#timeline-list .timeline-tab-content .timeline-tab-pane');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Remove active class from all inner buttons and panes
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+
+            // Add active class to the clicked button and corresponding pane
+            button.classList.add('active');
+            const activeTab = button.getAttribute('data-tab');
+            document.getElementById(activeTab).classList.add('active');
+        });
+    });
+}
+
+// Call the setup function after the DOM is fully loaded
+document.addEventListener('DOMContentLoaded', setupTimelineTabs);

@@ -81,6 +81,9 @@
                             <button class="tab-btn" data-tab="interactions">
                                 <i class="fas fa-project-diagram"></i> Interactions
                             </button>
+                            <button class="tab-btn" data-tab="components">
+                                <i class="fas fa-cogs"></i> Components
+                            </button>
                             <button class="tab-btn" data-tab="timeline">
                                 <i class="fas fa-clock"></i> Timeline
                             </button>
@@ -89,7 +92,21 @@
                         <div class="tab-content">
                             <div id="entities-list" class="tab-pane active"></div>
                             <div id="interactions-list" class="tab-pane"></div>
-                            <div id="timeline-list" class="tab-pane"></div>
+                            <div id="components-list" class="tab-pane"></div>
+                            <div id="timeline-list" class="tab-pane">
+                                <div class="timeline-tabs">
+                                    <button class="timeline-tab-btn active" data-tab="timeline-table">
+                                        <i class="fas fa-table"></i> Table
+                                    </button>
+                                    <button class="timeline-tab-btn" data-tab="timeline-editor">
+                                        <i class="fas fa-clock"></i> Timeline Editor
+                                    </button>
+                                </div>
+                                <div class="timeline-tab-content">
+                                    <div id="timeline-table" class="timeline-tab-pane active"></div>
+                                    <div id="timeline-editor" class="timeline-tab-pane"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

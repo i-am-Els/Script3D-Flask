@@ -208,7 +208,7 @@ body {
 }
 
 /* Results Section */
-.tabs {
+.tabs, .timeline-tabs {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 1.5rem;
@@ -216,7 +216,7 @@ body {
     padding-bottom: 1rem;
 }
 
-.tab-btn {
+.tab-btn, .timeline-tab-btn {
     background: none;
     border: none;
     padding: 0.75rem 1.5rem;
@@ -230,25 +230,25 @@ body {
     gap: 0.5rem;
 }
 
-.tab-btn:hover {
+.tab-btn:hover, .timeline-tab-btn:hover {
     background-color: var(--background-color);
     color: var(--text-primary);
 }
 
-.tab-btn.active {
+.tab-btn.active, .timeline-tab-btn.active {
     background-color: var(--primary-color);
     color: white;
 }
 
-.tab-content {
+.tab-content, .timeline-tab-content {
     min-height: 200px;
 }
 
-.tab-pane {
+.tab-pane, .timeline-tab-pane {
     display: none;
 }
 
-.tab-pane.active {
+.tab-pane.active, .timeline-tab-pane.active {
     display: block;
 }
 
@@ -521,4 +521,205 @@ body {
 .tab-pane.active .next-steps[data-tab="entities"],
 .tab-pane.active .next-steps[data-tab="interactions"] {
     display: block;
+}
+
+.components-container {
+    display: flex; /* Use flexbox for horizontal layout */
+    height: 100%; /* Ensure the container takes full height */
+}
+
+.components-left-column {
+    flex: 1; /* Take up 1 part of the available space */
+    padding: 1rem;
+    border-right: 1px solid #ccc; /* Optional: add a divider */
+    overflow-y: auto; /* Allow scrolling if content overflows */
+}
+
+.components-right-column {
+    flex: 2; /* Take up 2 parts of the available space */
+    padding: 1rem;
+    overflow-y: auto; /* Allow scrolling if content overflows */
+    height: 890px;
+}
+
+.component-item {
+    display: flex; /* Use flexbox for layout */
+    align-items: center; /* Center items vertically */
+    border: 1px solid #007bff; /* Border color */
+    border-radius: 5px; /* Rounded corners */
+    padding: 0.5rem; /* Reduced padding for compactness */
+    margin-bottom: 0.5rem; /* Space between cards */
+    background-color: #f0f0f0; /* Light gray background color */
+    transition: box-shadow 0.3s; /* Smooth shadow transition */
+}
+
+.component-item i {
+    font-size: 0.8rem; /* Reduced icon size */
+    margin-right: 0.5rem; /* Space between icon and text */
+    color: #9fc2e7; /* Icon color */
+}
+
+.component-name {
+    font-weight: bold; /* Make the component name bold */
+    margin-right: 5px; /* Space between name and ID */
+    font-size: 0.8rem; /* Smaller font size for the component name */
+}
+
+.component-id {
+    background-color: #e0e0e0; /* Highlighted background color for ID */
+    padding: 2px 5px; /* Padding for the ID */
+    border-radius: 3px; /* Rounded corners for the ID */
+    font-size: 0.7rem; /* Smaller font size for the ID */
+}
+
+.component-details {
+    font-size: 0.6rem; /* Smaller font size for details */
+    color: #333; /* Darker text color for better readability */
+}
+
+.component-item:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Shadow effect on hover */
+}
+
+.component-card {
+    border: 1px solid #007bff; /* Border color for component cards */
+    border-radius: 5px; /* Rounded corners */
+    padding: 0.5rem; /* Padding inside the component card */
+    background-color: #f9f9f9; /* Light background color */
+    margin-bottom: 0.5rem; /* Space between component cards */
+}
+
+.component-section {
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: #f9f9f9;
+}
+
+.required-components {
+    margin-top: 0.4rem;
+}
+
+.components-table {
+    width: 100%; /* Full width of the container */
+    border-collapse: collapse; /* Collapse borders */
+    margin-top: 0.3rem; /* Space above the table */
+}
+
+.components-table th,
+.components-table td {
+    border: 1px solid var(--border-color); /* Border color for table cells */
+    padding: 0.3rem; /* Padding inside table cells */
+    text-align: left; /* Align text to the left */
+    font-size: 0.7rem;
+}
+
+.components-table th {
+    background-color: var(--primary-color); /* Header background color */
+    color: white; /* Header text color */
+}
+
+.components-table tr:nth-child(even) {
+    background-color: #f9f9f9; /* Light gray background for even rows */
+}
+
+.components-table tr:hover {
+    background-color: #e0e0e0; /* Highlight row on hover */
+}
+
+#timeline-list {
+    margin: 1rem 0; /* Margin around the timeline section */
+}
+
+h3 {
+    font-size: 0.8rem; /* Font size for scene headers */
+    margin-bottom: 0.5rem; /* Space below the header */
+    color: #333; /* Darker color for the header */
+}
+
+.timeline-table {
+    width: 100%; /* Full width of the container */
+    border-collapse: collapse; /* Collapse borders */
+    margin-bottom: 0.7rem; /* Space below the table */
+}
+
+.timeline-table th,
+.timeline-table td {
+    border: 1px solid #007bff; /* Border color for table cells */
+    padding: 0.4rem; /* Padding inside table cells */
+    text-align: left; /* Align text to the left */
+    font-size: 0.6rem;
+}
+
+.timeline-table th {
+    background-color: #007bff; /* Header background color */
+    color: white; /* Header text color */
+}
+
+.timeline-table tr:nth-child(even) {
+    background-color: #f9f9f9; /* Light gray background for even rows */
+}
+
+.timeline-table tr:hover {
+    background-color: #e0e0e0; /* Highlight row on hover */
+}
+
+.scene-section {
+    margin-bottom: 0.7rem; /* Space between scene sections */
+    border: 1px solid #ccc; /* Border around each scene section */
+    border-radius: 5px; /* Rounded corners */
+    padding: 0.5rem; /* Padding inside the scene section */
+    background-color: #f9f9f9; /* Light background color */
+}
+
+.scene-header {
+    display: flex; /* Use flexbox for layout */
+    justify-content: space-between; /* Space between name and ID */
+    align-items: center; /* Center items vertically */
+}
+
+.scene-header h4 {
+    margin: 0; /* Remove default margin */
+    font-size: 0.7rem; /* Font size for scene name */
+}
+
+.scene-id {
+    background-color: #e0e0e0; /* Highlighted background color for scene ID */
+    padding: 2px 5px; /* Padding for the ID */
+    border-radius: 3px; /* Rounded corners for the ID */
+    font-size: 0.6rem; /* Font size for ID */
+}
+
+.timeline-container {
+    margin: 1rem 0; /* Margin around the timeline container */
+}
+
+.scene-timeline {
+    margin-bottom: 1rem; /* Space between scene timelines */
+    border: 1px solid #ccc; /* Border around each scene timeline */
+    border-radius: 5px; /* Rounded corners */
+    padding: 1rem; /* Padding inside the scene timeline */
+    background-color: #f9f9f9; /* Light background color */
+}
+
+.timeline-track {
+    position: relative; /* Positioning for absolute children */
+    height: 50px; /* Height of the timeline track */
+    background-color: #e0e0e0; /* Background color for the track */
+    border: 1px solid #007bff; /* Border color for the track */
+    border-radius: 5px; /* Rounded corners */
+}
+
+.timeline-event {
+    position: absolute; /* Positioning for the event blocks */
+    height: 100%; /* Full height of the track */
+    background-color: #007bff; /* Color for the event block */
+    opacity: 0.7; /* Slightly transparent */
+    border-radius: 3px; /* Rounded corners for event blocks */
+    transition: background-color 0.3s; /* Smooth transition for hover effect */
+}
+
+.timeline-event:hover {
+    background-color: #0056b3; /* Darker color on hover */
 }
