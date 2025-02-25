@@ -68,3 +68,92 @@ To run the tests, use the command below.
 ```shell
 python -m pytest
 ```
+
+
+  Full diff:
+  - [
+  -     {
+  + {
+  +     'timelines': [
+  +         {
+  -         'events': [
+  +             'events': [
+  ? ++++
+  -             {
+  +                 {
+  ? ++++
+  -                 'components_involved': [
+  +                     'components_involved': [
+  ? ++++
+  -                     'COMP001',
+  +                         'COMP001',
+  ? ++++
+  -                     'COMP002',
+  +                         'COMP002',
+  ? ++++
+  -                 ],
+  +                     ],
+  ? ++++
+  -                 'duration': 2.5,
+  +                     'duration': 2.5,
+  ? ++++
+  -                 'interaction_id': 'I001',
+  +                     'interaction_id': 'I001',
+  ? ++++
+  -                 'start_time': 0.0,
+  +                     'start_time': 0.0,
+  ? ++++
+  +                 },
+  -             },
+  ?             ^
+  +             ],
+  ?             ^
+  -         ],
+  -         'scene_id': 'S001',
+  +             'scene_id': 'S001',
+  ? ++++
+  -     },
+  +         },
+  ? ++++
+  -     {
+  +         {
+  -         'events': [
+  +             'events': [
+  ? ++++
+  -             {
+  +                 {
+  ? ++++
+  -                 'components_involved': [
+  +                     'components_involved': [
+  ? ++++
+  -                     'COMP003',
+  +                         'COMP003',
+  ? ++++
+  -                 ],
+  +                     ],
+  ? ++++
+  -                 'duration': 3.0,
+  +                     'duration': 3.0,
+  ? ++++
+  -                 'interaction_id': 'I002',
+  +                     'interaction_id': 'I002',
+  ? ++++
+  -                 'start_time': 1.0,
+  +                     'start_time': 1.0,
+  ? ++++
+  +                 },
+  -             },
+  ?             ^
+  +             ],
+  ?             ^
+  -         ],
+  -         'scene_id': 'S002',
+  +             'scene_id': 'S002',
+  ? ++++
+  +         },
+  -     },
+  ?     ^
+  +     ],
+  ?     ^
+  - ]
+  + }

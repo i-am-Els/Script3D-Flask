@@ -12,16 +12,19 @@ from enum import Enum
 from datetime import datetime
 from functools import wraps
 from dataclasses import dataclass
+import redis
 
 
 load_dotenv()  # Add this near the top of your script
 
+r = redis.from_url(f'redis://{os.environ["REDIS_USERNAME"]}:{os.environ["REDIS_PASSWORD"]}@{os.environ["REDIS_HOST"]}:{os.environ["REDIS_PORT"]}/{os.environ["REDIS_DB"]}')
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB limit
 app.secret_key = os.environ['FLASK_SECRET_KEY']  # Simplified since we know the key exists
-app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_TYPE'] = 'redis'
 app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_REDIS'] = r
 
 # Create and initialize the Flask-Session object AFTER `app` has been configured
 server_session = Session(app)
@@ -544,7 +547,7 @@ def generate_timeline(scenes: Dict[str, Scene], interactions: Dict[str, Interact
         
         # Validate response using Pydantic model
         try:
-            validated_result = TimelineResult(**result)
+            validated_result = TimelineResult(timelines=result["timelines"])
         except ValidationError as e:
             raise ValueError(f"Validation failed: {e.errors()}")
         
