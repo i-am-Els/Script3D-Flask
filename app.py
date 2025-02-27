@@ -628,16 +628,8 @@ def analyze_entities():
 
 @app.route('/download_json', methods=['POST'])
 def download_json():
-    data = request.get_json()
-    json_bytes = io.BytesIO()
-    json_bytes.write(json.dumps(data, indent=4).encode('utf-8'))
-    json_bytes.seek(0)
-    return send_file(
-        json_bytes,
-        as_attachment=True,
-        download_name='output.json',
-        mimetype='application/json'
-    )
+    # Implementation for downloading JSON
+    pass
 
 @app.route('/confirm/<analysis_type>', methods=['POST'])
 @requires_session_data('entities')  # Base requirement
@@ -819,6 +811,9 @@ def export_components():
             
         components = session['components']
         entities = session['entities']['entities']
+        scene = session['scenes']
+        interaction = session['interactions']
+        timeline = session['timelines']
         
         # Create a more detailed export format
         export_data = {
@@ -826,17 +821,25 @@ def export_components():
                 "generated_at": datetime.now().isoformat(),
                 "version": "1.0"
             },
-            "entities": {},
+            "data": {
+                "entities": entities,
+                "components": components,
+                "scene": scene,
+                "interactions": interaction,
+                "timeline": timeline
+            },
         }
+
+        dict()
         
-        # Combine entity info with their components
-        for entity_id, component_data in components.items():
-            entity_info = entities.get(entity_id, {})
-            export_data["entities"][entity_id] = {
-                "name": entity_info.get("name", "Unknown"),
-                "type": entity_info.get("type", "Unknown"),
-                "components": component_data["required_components"]
-            }
+        # # Combine entity info with their components
+        # for entity_id, component_data in components.items():
+        #     entity_info = entities.get(entity_id, {})
+        #     export_data["entities"][entity_id] = {
+        #         "name": entity_info.get("name", "Unknown"),
+        #         "type": entity_info.get("type", "Unknown"),
+        #         "components": component_data["required_components"]
+        #     }
             
         # Create the response with the JSON file
         response = make_response(jsonify(export_data))

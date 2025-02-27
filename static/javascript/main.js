@@ -472,7 +472,7 @@ async function exportComponents() {
         const blob = await response.blob();
         downloadFile(blob, 'entity_components.json');
     } catch (error) {
-        flash('Error exporting components', 'error');
+        flash('Error exporting JSON data', 'error');
     }
 }
 
@@ -805,6 +805,8 @@ function setupTimelineTabs() {
         });
     });
 }
+
+
 
 // Call the setup function after the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', setupTimelineTabs);
