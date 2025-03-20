@@ -7,4 +7,4 @@ pytest
 pytest-mock
 flask-session
 redis
-
+gunicorn

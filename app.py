@@ -829,8 +829,6 @@ def export_components():
                 "timeline": timeline
             },
         }
-
-        dict()
         
         # # Combine entity info with their components
         # for entity_id, component_data in components.items():
@@ -884,4 +882,4 @@ def get_interaction_map():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
